@@ -176,15 +176,24 @@ class Manganelo : ParsedHttpSource() {
     override fun imageRequest(page: Page): Request {
         val imgHeader = Headers.Builder().apply {
             add("User-Agent", userAgent)
-            add("Referer", baseUrl)
+            add("sec-fetch-dest", "image")
+            add("sec-fetch-mode", "no-cors")
+            add("sec-fetch-site", "cross-site")
+            add("Referer", page.url)
         }.build()
         return GET(page.imageUrl!!, imgHeader)
     }
 
-    override fun pageListParse(document: Document): List<Page> {
+    override fun pageListParse(response: Response): List<Page> {
+        val document: Document = response.asJsoup()
+        val refUrl = response.request().url().toString()
         var i = 0
         return document.select("div.container-chapter-reader > img").map { el ->
-            Page(i++, "", el.attr("src").toString())
+            Page(i++, refUrl, el.attr("src").toString())
         }
+    }
+
+    override fun pageListParse(document: Document): List<Page> {
+        throw Exception("Not used")
     }
 }
