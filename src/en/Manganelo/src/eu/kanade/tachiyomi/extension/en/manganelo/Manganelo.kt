@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.extension.en.manganelo
 
 import android.util.Log
+import eu.kanade.tachiyomi.lib.ratelimit.RateLimitInterceptor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.asObservableSuccess
 import eu.kanade.tachiyomi.source.model.FilterList
@@ -15,6 +16,7 @@ import kotlin.collections.ArrayList
 import okhttp3.CacheControl
 import okhttp3.Headers
 import okhttp3.HttpUrl
+import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
@@ -28,6 +30,9 @@ class Manganelo : ParsedHttpSource() {
     override val lang: String = "en"
     override val name: String = "Manganelo"
     override val supportsLatest: Boolean = true
+    private val rateLimitInterceptor = RateLimitInterceptor(2)
+    override val client: OkHttpClient = network.client.newBuilder()
+        .addNetworkInterceptor(rateLimitInterceptor).build()
 
     private val userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" +
         " (KHTML, like Gecko) Chrome/83.0.4103.61 Safari/537.36"
