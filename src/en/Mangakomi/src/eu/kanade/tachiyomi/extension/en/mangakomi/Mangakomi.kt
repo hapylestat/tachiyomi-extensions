@@ -1,4 +1,4 @@
-package eu.kanade.tachiyomi.extension.en.manganelo
+package eu.kanade.tachiyomi.extension.en.mangakomi
 
 import android.util.Log
 import eu.kanade.tachiyomi.lib.ratelimit.RateLimitInterceptor
@@ -23,12 +23,12 @@ import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import rx.Observable
 
-class Manganelo : ParsedHttpSource() {
+class Mangakomi : ParsedHttpSource() {
 
-    private val chapterRegEx: Regex = ".*(Chapter)\\s([\\d.]+).*".toRegex()
-    override val baseUrl: String = "https://manganelo.com"
+    private val chapterRegEx: Regex = ".*(Chapter)\\s([\\d]+).*".toRegex()
+    override val baseUrl: String = "https://mangakomi.com/"
     override val lang: String = "en"
-    override val name: String = "Manganelo"
+    override val name: String = "Mangakomi"
     override val supportsLatest: Boolean = true
     private val rateLimitInterceptor = RateLimitInterceptor(2)
     override val client: OkHttpClient = network.client.newBuilder()

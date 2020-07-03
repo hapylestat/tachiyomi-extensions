@@ -1,6 +1,5 @@
-package eu.kanade.tachiyomi.extension.en.manganelo
+package eu.kanade.tachiyomi.extension.en.newmanganelos
 
-import android.util.Log
 import eu.kanade.tachiyomi.lib.ratelimit.RateLimitInterceptor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.asObservableSuccess
@@ -10,8 +9,6 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
 import eu.kanade.tachiyomi.util.asJsoup
-import java.text.SimpleDateFormat
-import java.util.Locale
 import kotlin.collections.ArrayList
 import okhttp3.CacheControl
 import okhttp3.Headers
@@ -23,12 +20,14 @@ import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import rx.Observable
 
-class Manganelo : ParsedHttpSource() {
+class Newmanganelos : ParsedHttpSource() {
 
     private val chapterRegEx: Regex = ".*(Chapter)\\s([\\d.]+).*".toRegex()
-    override val baseUrl: String = "https://manganelo.com"
+
+    private val protocol: String = "http:"
+    override val baseUrl: String = "$protocol//manganelos.com"
     override val lang: String = "en"
-    override val name: String = "Manganelo"
+    override val name: String = "NewManganelos"
     override val supportsLatest: Boolean = true
     private val rateLimitInterceptor = RateLimitInterceptor(2)
     override val client: OkHttpClient = network.client.newBuilder()
@@ -41,33 +40,34 @@ class Manganelo : ParsedHttpSource() {
         add("User-Agent", userAgent)
     }
 
-    override fun popularMangaNextPageSelector(): String = "a.page-select"
+    override fun popularMangaNextPageSelector(): String = "ul.pagination > li > a[rel=next]"
     override fun latestUpdatesNextPageSelector(): String = popularMangaNextPageSelector()
     override fun searchMangaNextPageSelector(): String = popularMangaNextPageSelector()
 
-    override fun popularMangaSelector(): String = "div.content-genres-item"
+    override fun popularMangaSelector(): String = "div.cate-manga > div.col-md-6"
     override fun latestUpdatesSelector(): String = popularMangaSelector()
-    override fun searchMangaSelector(): String = "div.panel-search-story > div.search-story-item"
-    override fun chapterListSelector(): String = "ul.row-content-chapter > li"
+    override fun searchMangaSelector(): String = popularMangaSelector()
+    override fun chapterListSelector(): String = "div.chapter-list:nth-child(1) > ul > li.row > div.chapter > h4 > a"
 
     override fun popularMangaRequest(page: Int): Request {
-        val url = if (page == 1) "$baseUrl/genre-all?type=topview"
-        else "$baseUrl/genre-all/$page?type=topview"
+        val url = if (page == 1) "$baseUrl/popular-manga"
+        else "$baseUrl/popular-manga/?page=$page"
 
         return GET(url, headersBuilder().build())
     }
 
     override fun latestUpdatesRequest(page: Int): Request {
-        val url = if (page == 1) "$baseUrl/genre-all"
-        else "$baseUrl/genre-all/$page"
+        val url = if (page == 1) "$baseUrl/latest-manga"
+        else "$baseUrl/latest-manga?page=$page"
 
         return GET(url, headersBuilder().build())
     }
 
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
-        val rawq = query.replace(" ", "_").toLowerCase()
-        val q = HttpUrl.parse("$baseUrl/search/story/$rawq")!!.newBuilder()
+        val rawq = query.toLowerCase()
+        val q = HttpUrl.parse("$baseUrl/search")!!.newBuilder()
 
+        q.addQueryParameter("q", rawq)
         q.addQueryParameter("page", page.toString())
         return GET(q.toString(), headersBuilder().build(), CacheControl.FORCE_NETWORK)
     }
@@ -92,26 +92,24 @@ class Manganelo : ParsedHttpSource() {
 
     private fun chapterListParse(response: Response, manga: SManga): List<SChapter> {
         val document = response.asJsoup()
-        return document.select(chapterListSelector()).map { chapterFromElement(it, manga) }
+        return document.select(chapterListSelector())
+            .map { chapterFromElement(it, manga) }
+            .distinctBy { Pair(it.name, it.chapter_number) }
+            .sortedBy { it.chapter_number }
+            .reversed()
     }
 
     private fun chapterFromElement(element: Element, manga: SManga): SChapter {
         val chapter = SChapter.create()
-        val root = element.select("li")
-        val url_element = root.select("a.chapter-name")
 
-        chapter.name = url_element.text()
-        chapter.name.split(Regex(""))
+        chapter.name = parseChapterName(element.text())
         try {
             chapter.chapter_number = parseChapterName(chapter.name).split(" ")[1].toFloat()
         } catch (e: java.lang.Exception) {
-            Log.e("wow", "dfa")
+            chapter.chapter_number = 0.0F
         }
-        chapter.setUrlWithoutDomain(url_element.attr("href").toString())
-        chapter.date_upload = root.select("span.chapter-time")
-            .attr("title").toString().let {
-                SimpleDateFormat("MMM dd,yyyy kk:mm", Locale.US).parse(it).time
-            }
+        chapter.setUrlWithoutDomain(element.attr("href").toString())
+        chapter.date_upload = 0
         return chapter
     }
 
@@ -123,26 +121,48 @@ class Manganelo : ParsedHttpSource() {
         }
     }
 
+    private fun getSubString(text: String, start: String, end: String): String {
+        var startPos = text.indexOf(start)
+        if (startPos == -1) return ""
+        startPos += start.length
+
+        var endPos = text.indexOf(end, startPos)
+        if (endPos == -1) return ""
+        endPos -= 1
+
+        return text.subSequence(startPos, endPos).toString()
+    }
+
+    private fun fixThumbURL(thumbUrl: String): String {
+        if (thumbUrl.startsWith("//")) {
+            return "$protocol$thumbUrl"
+        }
+        return thumbUrl
+    }
+
     override fun mangaDetailsParse(document: Document): SManga {
         val manga = SManga.create()
-
-        val root = document.select("div.story-info-right")
-        val table = document.select("div.story-info-right > table > tbody")
+        val root = document.select("div.manga-detail")
+        val table = document.select("div.media-body")
+        val tableBody = table.select("p.description-update").toString()
         val genres = ArrayList<String>()
         val authors = ArrayList<String>()
 
-        table.select("tr:has(td > i.info-genres) > td.table-value > a").forEach { x ->
-            genres.add(x.text())
-        }
-        table.select("tr:has(td > i.info-author) > td.table-value > a").forEach { x ->
-            authors.add(x.text())
-        }
+        table.select("p.description-update > a").text()
+            .split("; ").forEach { x ->
+                genres.add(x.trim())
+            }
 
-        manga.title = root.select("li > h1").text()
-        manga.status = parseStatus(table.select("tr:has(td > i.info-status) > td.table-value").text())
-        manga.thumbnail_url = document.select("div.story-info-left > span > img")
-            .attr("src").toString()
-        manga.description = document.select("div.panel-story-info-description").text()
+        getSubString(tableBody, "<span>Author(s): </span>", "<br>").split(";")
+            .forEach { x ->
+                authors.add(x.trim())
+            }
+
+        manga.title = root.select("h1.title-manga").text()
+        manga.status = parseStatus(getSubString(tableBody, "<span>Status: </span>", "<br>"))
+        manga.thumbnail_url = fixThumbURL(document.select("div.manga-detail > div.cover-detail > img")
+            .attr("src").toString())
+        manga.description = document.select("div.manga-content > p").text()
         manga.author = authors.joinToString()
         manga.genre = genres.joinToString()
 
@@ -151,30 +171,19 @@ class Manganelo : ParsedHttpSource() {
 
     override fun latestUpdatesFromElement(element: Element): SManga {
         val manga = SManga.create()
-        val manga_item = element.select("a.genres-item-img")
+        val mangaItem = element.select("div.media")
+        val mangaLink = mangaItem.select("div.media-body > a")
 
-        manga.title = manga_item.attr("title").toString()
-        manga.setUrlWithoutDomain(manga_item.attr("href").toString())
-        manga.thumbnail_url = manga_item.select("img").attr("src").toString()
+        manga.thumbnail_url = fixThumbURL(mangaItem.select("div.cover-manga > a > img")
+            .attr("src").toString())
+        manga.title = mangaLink.attr("title").toString()
+        manga.setUrlWithoutDomain(mangaLink.attr("href").toString())
 
         return manga
     }
 
-    override fun popularMangaFromElement(element: Element): SManga {
-        return latestUpdatesFromElement(element)
-    }
-
-    override fun searchMangaFromElement(element: Element): SManga {
-        val manga = SManga.create()
-        val item = element.select("div.search-story-item")
-        val sub_item = item.select("div.item-right > h3")
-
-        manga.thumbnail_url = item.select("a.item-img > img").attr("src").toString()
-        manga.title = sub_item.select("a.item-title").text()
-        manga.setUrlWithoutDomain(sub_item.select("a.item-title")
-            .attr("href").toString())
-        return manga
-    }
+    override fun popularMangaFromElement(element: Element): SManga = latestUpdatesFromElement(element)
+    override fun searchMangaFromElement(element: Element): SManga = latestUpdatesFromElement(element)
 
     override fun imageUrlParse(document: Document) = ""
 
@@ -184,6 +193,7 @@ class Manganelo : ParsedHttpSource() {
             add("sec-fetch-dest", "image")
             add("sec-fetch-mode", "no-cors")
             add("sec-fetch-site", "cross-site")
+            add("dnt", "1")
             add("Referer", page.url)
         }.build()
         return GET(page.imageUrl!!, imgHeader)
@@ -193,8 +203,9 @@ class Manganelo : ParsedHttpSource() {
         val document: Document = response.asJsoup()
         val refUrl = response.request().url().toString()
         var i = 0
-        return document.select("div.container-chapter-reader > img").map { el ->
-            Page(i++, refUrl, el.attr("src").toString())
+        val chapters = document.select("p[id=arraydata]").text()
+        return chapters.split(",").map { el ->
+            Page(i++, refUrl, el)
         }
     }
 

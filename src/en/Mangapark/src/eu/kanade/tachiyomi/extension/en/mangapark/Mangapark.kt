@@ -1,4 +1,4 @@
-package eu.kanade.tachiyomi.extension.en.manganelo
+package eu.kanade.tachiyomi.extension.en.mangapark
 
 import android.util.Log
 import eu.kanade.tachiyomi.lib.ratelimit.RateLimitInterceptor
@@ -23,9 +23,9 @@ import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import rx.Observable
 
-class Manganelo : ParsedHttpSource() {
+class Mangapark : ParsedHttpSource() {
 
-    private val chapterRegEx: Regex = ".*(Chapter)\\s([\\d.]+).*".toRegex()
+    private val chapterRegEx: Regex = ".*(Chapter)\\s([\\d]+).*".toRegex()
     override val baseUrl: String = "https://manganelo.com"
     override val lang: String = "en"
     override val name: String = "Manganelo"
