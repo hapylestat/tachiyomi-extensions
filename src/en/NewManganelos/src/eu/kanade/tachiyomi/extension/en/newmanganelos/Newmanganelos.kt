@@ -190,11 +190,7 @@ class Newmanganelos : ParsedHttpSource() {
     override fun imageRequest(page: Page): Request {
         val imgHeader = Headers.Builder().apply {
             add("User-Agent", userAgent)
-            add("sec-fetch-dest", "image")
-            add("sec-fetch-mode", "no-cors")
-            add("sec-fetch-site", "cross-site")
-            add("dnt", "1")
-            add("Referer", page.url)
+//            add("Referer", page.url)
         }.build()
         return GET(page.imageUrl!!, imgHeader)
     }
@@ -205,7 +201,7 @@ class Newmanganelos : ParsedHttpSource() {
         var i = 0
         val chapters = document.select("p[id=arraydata]").text()
         return chapters.split(",").map { el ->
-            Page(i++, refUrl, el)
+            Page(i++, refUrl, fixThumbURL(el))
         }
     }
 

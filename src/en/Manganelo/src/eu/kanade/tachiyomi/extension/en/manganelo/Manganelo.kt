@@ -10,6 +10,7 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
 import eu.kanade.tachiyomi.util.asJsoup
+import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.util.Locale
 import kotlin.collections.ArrayList
@@ -31,7 +32,7 @@ class Manganelo : ParsedHttpSource() {
     override val name: String = "Manganelo"
     override val supportsLatest: Boolean = true
     private val rateLimitInterceptor = RateLimitInterceptor(2)
-    override val client: OkHttpClient = network.client.newBuilder()
+    override val client: OkHttpClient = network.cloudflareClient.newBuilder()
         .addNetworkInterceptor(rateLimitInterceptor).build()
 
     private val userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" +
@@ -92,25 +93,32 @@ class Manganelo : ParsedHttpSource() {
 
     private fun chapterListParse(response: Response, manga: SManga): List<SChapter> {
         val document = response.asJsoup()
-        return document.select(chapterListSelector()).map { chapterFromElement(it, manga) }
+        return document.select(chapterListSelector())
+            .map { chapterFromElement(it, manga) }
+            .distinctBy { Pair(it.name, it.chapter_number) }
+            .sortedBy { it.chapter_number }
+            .reversed()
     }
 
     private fun chapterFromElement(element: Element, manga: SManga): SChapter {
         val chapter = SChapter.create()
         val root = element.select("li")
-        val url_element = root.select("a.chapter-name")
+        val urlElement = root.select("a.chapter-name")
 
-        chapter.name = url_element.text()
-        chapter.name.split(Regex(""))
+        chapter.name = parseChapterName(urlElement.text())
         try {
-            chapter.chapter_number = parseChapterName(chapter.name).split(" ")[1].toFloat()
+            chapter.chapter_number = chapter.name.split(" ")[1].toFloat()
         } catch (e: java.lang.Exception) {
             Log.e("wow", "dfa")
         }
-        chapter.setUrlWithoutDomain(url_element.attr("href").toString())
+        chapter.setUrlWithoutDomain(urlElement.attr("href").toString())
         chapter.date_upload = root.select("span.chapter-time")
             .attr("title").toString().let {
-                SimpleDateFormat("MMM dd,yyyy kk:mm", Locale.US).parse(it).time
+                try {
+                    SimpleDateFormat("MMM dd,yyyy kk:mm", Locale.US).parse(it).time
+                } catch (e: ParseException) {
+                    0
+                }
             }
         return chapter
     }
