@@ -37,7 +37,7 @@ class Mangakomi : ParsedHttpSource() {
     override val lang: String = "en"
     override val name: String = "Mangakomi"
     override val supportsLatest: Boolean = true
-    private val rateLimitInterceptor = RateLimitInterceptor(2)
+    private val rateLimitInterceptor = RateLimitInterceptor(1)
     override val client: OkHttpClient = network.cloudflareClient.newBuilder()
         .addNetworkInterceptor(rateLimitInterceptor).build()
 
@@ -295,7 +295,7 @@ class Mangakomi : ParsedHttpSource() {
 
         manga.title = manga_item.text()
         manga.setUrlWithoutDomain(manga_item.attr("href").toString())
-        manga.thumbnail_url = element.select("div.item-thumb > a > img").attr("data-src").toString()
+        manga.thumbnail_url = element.select("div.item-thumb > a > img").attr("src").toString()
 
         return manga
     }
@@ -307,7 +307,7 @@ class Mangakomi : ParsedHttpSource() {
         val item = element.select("div > div.tab-thumb > a >  img")
         val sub_item = element.select("div > div.tab-summary > div.post-title > h3.h4 > a")
 
-        manga.thumbnail_url = item.attr("data-src").toString()
+        manga.thumbnail_url = item.attr("src").toString()
         manga.title = sub_item.text()
         manga.setUrlWithoutDomain(sub_item.attr("href").toString())
         return manga
@@ -331,7 +331,7 @@ class Mangakomi : ParsedHttpSource() {
         val refUrl = response.request().url().toString()
         var i = 0
         return document.select("div.reading-content > div > img.wp-manga-chapter-img").map { el ->
-            Page(i++, refUrl, el.attr("data-src").toString())
+            Page(i++, refUrl, el.attr("data-lazy-src").toString())
         }
     }
 

@@ -26,9 +26,9 @@ import rx.Observable
 class Mangapark : ParsedHttpSource() {
 
     private val chapterRegEx: Regex = ".*(Chapter)\\s([\\d]+).*".toRegex()
-    override val baseUrl: String = "https://manganelo.com"
+    override val baseUrl: String = "https://mangapark.net"
     override val lang: String = "en"
-    override val name: String = "Manganelo"
+    override val name: String = "MangaPark"
     override val supportsLatest: Boolean = true
     private val rateLimitInterceptor = RateLimitInterceptor(2)
     override val client: OkHttpClient = network.client.newBuilder()
@@ -41,34 +41,31 @@ class Mangapark : ParsedHttpSource() {
         add("User-Agent", userAgent)
     }
 
-    override fun popularMangaNextPageSelector(): String = "a.page-select"
+    override fun popularMangaNextPageSelector(): String = "div.pager-bar"
     override fun latestUpdatesNextPageSelector(): String = popularMangaNextPageSelector()
     override fun searchMangaNextPageSelector(): String = popularMangaNextPageSelector()
 
-    override fun popularMangaSelector(): String = "div.content-genres-item"
+    override fun popularMangaSelector(): String = "div.ls1 > div.item"
     override fun latestUpdatesSelector(): String = popularMangaSelector()
-    override fun searchMangaSelector(): String = "div.panel-search-story > div.search-story-item"
+    override fun searchMangaSelector(): String = "div.manga-list > div.item"
     override fun chapterListSelector(): String = "ul.row-content-chapter > li"
 
-    override fun popularMangaRequest(page: Int): Request {
-        val url = if (page == 1) "$baseUrl/genre-all?type=topview"
-        else "$baseUrl/genre-all/$page?type=topview"
-
-        return GET(url, headersBuilder().build())
-    }
+    override fun popularMangaRequest(page: Int): Request = latestUpdatesRequest(page)
 
     override fun latestUpdatesRequest(page: Int): Request {
-        val url = if (page == 1) "$baseUrl/genre-all"
-        else "$baseUrl/genre-all/$page"
+        val url = if (page == 1) "$baseUrl/latest"
+        else "$baseUrl/latest/$page"
 
         return GET(url, headersBuilder().build())
     }
 
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
-        val rawq = query.replace(" ", "_").toLowerCase()
-        val q = HttpUrl.parse("$baseUrl/search/story/$rawq")!!.newBuilder()
+        val rawq = query.toLowerCase()
+        val q = HttpUrl.parse("$baseUrl/search")!!.newBuilder()
 
         q.addQueryParameter("page", page.toString())
+        q.addQueryParameter("q", rawq)
+
         return GET(q.toString(), headersBuilder().build(), CacheControl.FORCE_NETWORK)
     }
 
@@ -92,6 +89,18 @@ class Mangapark : ParsedHttpSource() {
 
     private fun chapterListParse(response: Response, manga: SManga): List<SChapter> {
         val document = response.asJsoup()
+        /**
+         *  The manga could contain chapters from different sources
+         *  Sample: https://mangapark.net/manga/doulou-dalu#
+         *
+         *  selector by source:  div.book-list-1 > div.stream
+         *  selector by chapters (from source selector root): div.volume > ul > li.item > div > a
+         *
+         *  Strategy: select the source with biggest amount of chapters
+         *  Negatives in strategy: no way to select source user like, same as it could be switched
+         *                         when another source will got more chapters. But at the end
+         *                         the goal is to provide the fullest content in such situation
+         */
         return document.select(chapterListSelector()).map { chapterFromElement(it, manga) }
     }
 
