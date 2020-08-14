@@ -331,7 +331,13 @@ class Mangakomi : ParsedHttpSource() {
         val refUrl = response.request().url().toString()
         var i = 0
         return document.select("div.reading-content > div > img.wp-manga-chapter-img").map { el ->
-            Page(i++, refUrl, el.attr("data-lazy-src").toString())
+            val imgSrc: String = if (el.hasAttr("data-lazy-src")) {
+                el.attr("data-lazy-src").toString()
+            } else {
+                el.attr("src").toString()
+            }
+
+            Page(i++, refUrl, imgSrc)
         }
     }
 
